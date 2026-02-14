@@ -1,0 +1,5 @@
+.env
+.notified_tickets.json
+__pycache__/
+*.pyc
+.streamlit/secrets.toml

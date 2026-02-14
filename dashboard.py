@@ -13,9 +13,9 @@ import json
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-ADO_ORG = os.getenv("ADO_ORG", "")
-ADO_PROJECT = os.getenv("ADO_PROJECT", "")
-ADO_PAT = os.getenv("ADO_PAT", "")
+ADO_ORG = os.getenv("ADO_ORG", "") or st.secrets.get("ADO_ORG", "")
+ADO_PROJECT = os.getenv("ADO_PROJECT", "") or st.secrets.get("ADO_PROJECT", "")
+ADO_PAT = os.getenv("ADO_PAT", "") or st.secrets.get("ADO_PAT", "")
 BASE_URL = f"https://{ADO_ORG}.visualstudio.com"
 AUTH = ("", ADO_PAT)
 AUTO_REFRESH_SECONDS = 300

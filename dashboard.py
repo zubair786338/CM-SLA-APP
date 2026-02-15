@@ -1,5 +1,7 @@
 import streamlit as st
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import pandas as pd
 from datetime import datetime, timezone, date
 from pathlib import Path
@@ -20,15 +22,38 @@ BASE_URL = f"https://{ADO_ORG}.visualstudio.com"
 AUTH = ("", ADO_PAT)
 AUTO_REFRESH_SECONDS = 300
 
-# Notification tracking file
+# ---------------------------------------------------------------------------
+# Robust HTTP session with retries
+# ---------------------------------------------------------------------------
+def _get_session():
+    """Create a requests session with automatic retries."""
+    session = requests.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+    session.auth = AUTH
+    return session
+
+HTTP = _get_session()
+
+# Notification tracking — use session_state (survives Streamlit Cloud restarts
+# within a session) + file fallback for local runs
 NOTIFIED_FILE = Path(__file__).parent / ".notified_tickets.json"
 
 
 def _load_notified() -> set:
     """Load the set of ticket IDs that have already been notified."""
+    # Session state is primary (works on Streamlit Cloud)
+    if "notified_tickets" in st.session_state:
+        return set(st.session_state["notified_tickets"])
+    # File fallback (works locally)
     if NOTIFIED_FILE.exists():
         try:
             data = json.loads(NOTIFIED_FILE.read_text())
+            st.session_state["notified_tickets"] = data
             return set(data)
         except Exception:
             return set()
@@ -37,7 +62,12 @@ def _load_notified() -> set:
 
 def _save_notified(notified: set):
     """Persist the notified ticket IDs."""
-    NOTIFIED_FILE.write_text(json.dumps(list(notified)))
+    notified_list = list(notified)
+    st.session_state["notified_tickets"] = notified_list
+    try:
+        NOTIFIED_FILE.write_text(json.dumps(notified_list))
+    except Exception:
+        pass  # File write may fail on Streamlit Cloud — session_state is enough
 
 
 def _post_sla_alert(ticket_id: int, ticket_title: str, sla_status: str, remaining: int, sla_target: str, assignee_name: str = "", assignee_id: str = ""):
@@ -56,9 +86,9 @@ def _post_sla_alert(ticket_id: int, ticket_title: str, sla_status: str, remainin
         f"cc: {mention} \u2014 Change Management SLA App"
     )
     try:
-        resp = requests.post(
+        resp = HTTP.post(
             f"{BASE_URL}/{ADO_PROJECT}/_apis/wit/workitems/{ticket_id}/comments?api-version=7.1-preview.4",
-            auth=AUTH, json={"text": comment}, timeout=15,
+            json={"text": comment}, timeout=15,
         )
         return resp.status_code in (200, 201)
     except Exception:
@@ -599,9 +629,21 @@ def _fetch_details(ids_list, as_of_iso=None):
         )
         if as_of_iso:
             url += f"&asOf={as_of_iso}"
-        resp = requests.get(url, auth=AUTH, timeout=30)
-        resp.raise_for_status()
-        all_items.extend(resp.json().get("value", []))
+        try:
+            resp = HTTP.get(url, timeout=30)
+            resp.raise_for_status()
+            all_items.extend(resp.json().get("value", []))
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 401:
+                st.error("\u26a0\ufe0f **Authentication failed.** Your PAT may have expired. Please generate a new one and update it.")
+                st.stop()
+            raise
+        except requests.exceptions.ConnectionError:
+            st.error("\u26a0\ufe0f **Connection error.** Could not reach Azure DevOps. Please check your network and try again.")
+            st.stop()
+        except requests.exceptions.Timeout:
+            st.warning("\u23f3 Azure DevOps is taking too long to respond. Retrying...")
+            continue
     return all_items
 
 
@@ -750,17 +792,53 @@ def fetch_work_items(days_back=365):
             ORDER BY [System.CreatedDate] DESC
         """
     }
-    resp = requests.post(
-        f"{BASE_URL}/{ADO_PROJECT}/_apis/wit/wiql?api-version=7.1",
-        json=wiql, auth=AUTH, timeout=30,
-    )
-    resp.raise_for_status()
-    refs = resp.json().get("workItems", [])
-    if not refs:
-        return pd.DataFrame()
-    items = _fetch_details([w["id"] for w in refs])
-    return _parse_items(items, pd.Timestamp.now(tz=timezone.utc))
+    try:
+        resp = HTTP.post(
+            f"{BASE_URL}/{ADO_PROJECT}/_apis/wit/wiql?api-version=7.1",
+            json=wiql, timeout=30,
+        )
+        if resp.status_code == 401:
+            st.error(
+                "\u26a0\ufe0f **Authentication failed.** Your ADO Personal Access Token (PAT) may have expired.\n\n"
+                "**To fix:** Generate a new PAT at "
+                f"[{ADO_ORG}.visualstudio.com/_usersSettings/tokens](https://{ADO_ORG}.visualstudio.com/_usersSettings/tokens) "
+                "and update it in your secrets/environment."
+            )
+            st.stop()
+        resp.raise_for_status()
+        refs = resp.json().get("workItems", [])
+        if not refs:
+            return pd.DataFrame()
+        items = _fetch_details([w["id"] for w in refs])
+        return _parse_items(items, pd.Timestamp.now(tz=timezone.utc))
+    except requests.exceptions.ConnectionError:
+        st.error(
+            "\u26a0\ufe0f **Cannot connect to Azure DevOps.** \n\n"
+            "This could be a network issue or ADO may be down. "
+            "Please try refreshing in a minute."
+        )
+        st.stop()
+    except requests.exceptions.Timeout:
+        st.error(
+            "\u23f3 **Request timed out.** Azure DevOps is not responding. "
+            "Please try refreshing."
+        )
+        st.stop()
+    except Exception as e:
+        st.error(f"\u274c **Unexpected error:** {str(e)}")
+        st.stop()
 
+
+# ---------------------------------------------------------------------------
+# Startup Validation
+# ---------------------------------------------------------------------------
+if not ADO_ORG or not ADO_PROJECT or not ADO_PAT:
+    st.error(
+        "**Configuration missing.** The app needs the following settings to connect to Azure DevOps:\n\n"
+        "- `ADO_ORG`\n- `ADO_PROJECT`\n- `ADO_PAT`\n\n"
+        "Set these in your `.env` file (local) or Streamlit secrets (cloud)."
+    )
+    st.stop()
 
 # ---------------------------------------------------------------------------
 # Title + Filter Bar

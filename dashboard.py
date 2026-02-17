@@ -70,6 +70,25 @@ def _save_notified(notified: set):
         pass  # File write may fail on Streamlit Cloud — session_state is enough
 
 
+SLA_ALERT_MARKER = "SLA Alert"
+
+
+def _has_existing_alert(ticket_id: int) -> bool:
+    """Check if an SLA alert comment already exists on a ticket."""
+    try:
+        resp = HTTP.get(
+            f"{BASE_URL}/{ADO_PROJECT}/_apis/wit/workitems/{ticket_id}/comments?api-version=7.1-preview.4",
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            for c in resp.json().get("comments", []):
+                if SLA_ALERT_MARKER in c.get("text", ""):
+                    return True
+        return False
+    except Exception:
+        return False  # If we can't check, err on the side of not posting
+
+
 def _post_sla_alert(ticket_id: int, ticket_title: str, sla_status: str, remaining: int, sla_target: str, assignee_name: str = "", assignee_id: str = ""):
     """Post an SLA alert comment on an ADO work item, @mentioning the assignee."""
     if assignee_id:
@@ -107,6 +126,10 @@ def check_and_notify_at_risk(dataframe: "pd.DataFrame"):
     for _, row in at_risk_df.iterrows():
         tid = int(row["ID"])
         if tid not in notified:
+            # Double-check: look for existing alert comment on the ticket
+            if _has_existing_alert(tid):
+                notified.add(tid)  # Already alerted, just track it
+                continue
             success = _post_sla_alert(
                 ticket_id=tid,
                 ticket_title=row.get("Title", ""),

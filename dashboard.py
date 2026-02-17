@@ -402,10 +402,63 @@ def get_sla_days(scenario: str, team: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Business-day helpers
+# Business-day helpers (US holiday-aware)
 # ---------------------------------------------------------------------------
 # Scenarios with a "next Monday" SLA deadline
 MONDAY_DEADLINE_SCENARIOS = {"Acquisition Win Override", "Weekly Win Processing"}
+
+# US public holidays observed by Microsoft
+# Generated for 2025-2027; extend as needed
+US_HOLIDAYS = set()
+
+def _third_monday(year, month):
+    """Return the third Monday of a given month."""
+    d = pd.Timestamp(year=year, month=month, day=1)
+    # Advance to first Monday
+    while d.weekday() != 0:
+        d += pd.Timedelta(days=1)
+    return d + pd.Timedelta(weeks=2)
+
+def _last_monday(year, month):
+    """Return the last Monday of a given month."""
+    d = pd.Timestamp(year=year, month=month, day=28)
+    while d.month == month:
+        d += pd.Timedelta(days=1)
+    d -= pd.Timedelta(days=1)  # last day of month
+    while d.weekday() != 0:
+        d -= pd.Timedelta(days=1)
+    return d
+
+def _fourth_thursday(year, month):
+    """Return the fourth Thursday of a given month."""
+    d = pd.Timestamp(year=year, month=month, day=1)
+    while d.weekday() != 3:
+        d += pd.Timedelta(days=1)
+    return d + pd.Timedelta(weeks=3)
+
+for yr in range(2025, 2028):
+    US_HOLIDAYS.update([
+        pd.Timestamp(yr, 1, 1).normalize(),           # New Year's Day
+        _third_monday(yr, 1).normalize(),              # MLK Day
+        _third_monday(yr, 2).normalize(),              # Presidents' Day
+        _last_monday(yr, 5).normalize(),               # Memorial Day
+        pd.Timestamp(yr, 6, 19).normalize(),           # Juneteenth
+        pd.Timestamp(yr, 7, 4).normalize(),            # Independence Day
+        pd.Timestamp(yr, 9, 1).normalize() + pd.Timedelta(days=(0 - pd.Timestamp(yr, 9, 1).weekday()) % 7),  # Labor Day (1st Monday Sep)
+        pd.Timestamp(yr, 11, 11).normalize(),          # Veterans Day
+        _fourth_thursday(yr, 11).normalize(),           # Thanksgiving
+        _fourth_thursday(yr, 11).normalize() + pd.Timedelta(days=1),  # Day after Thanksgiving
+        pd.Timestamp(yr, 12, 25).normalize(),          # Christmas
+    ])
+
+
+def _is_business_day(dt):
+    """Check if a date is a business day (Mon-Fri, not a US holiday)."""
+    if dt.weekday() >= 5:
+        return False
+    # Strip timezone for comparison with tz-naive holiday set
+    check_date = dt.normalize().tz_localize(None) if dt.tz else dt.normalize()
+    return check_date not in US_HOLIDAYS
 
 
 def next_monday(dt):
@@ -419,21 +472,33 @@ def next_monday(dt):
 
 
 def add_business_days(start, n):
+    """Add n business days (excluding weekends and US holidays)."""
     if pd.isna(start) or n is None:
         return pd.NaT
     current = start
     added = 0
     while added < n:
         current += pd.Timedelta(days=1)
-        if current.weekday() < 5:
+        if _is_business_day(current):
             added += 1
     return current
 
 
 def business_days_between(start, end):
+    """Count business days between two dates (excluding weekends and US holidays)."""
     if pd.isna(start) or pd.isna(end):
         return 0
-    return max(len(pd.bdate_range(start.normalize(), end.normalize())) - 1, 0)
+    s = start.normalize()
+    e = end.normalize()
+    if s >= e:
+        return 0
+    count = 0
+    current = s + pd.Timedelta(days=1)
+    while current <= e:
+        if _is_business_day(current):
+            count += 1
+        current += pd.Timedelta(days=1)
+    return count
 
 
 # ---------------------------------------------------------------------------

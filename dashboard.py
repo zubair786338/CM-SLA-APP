@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import json
+import io
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -1045,8 +1046,8 @@ with k7:
         show_waiting()
 
 st.caption(
-    f"SLA Compliance: **{sla_pct:.0f}%** of completed tickets met SLA  •  "
-    f"Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    f"SLA Compliance: **{sla_pct:.0f}%** of completed tickets met SLA  |  "
+    f"Live - updated just now - auto-refreshes every {AUTO_REFRESH_SECONDS // 60} min"
 )
 st.markdown("---")
 
@@ -1186,8 +1187,40 @@ for section in section_order:
     # Display table
     display = sdf[[
         "ID", "SubType", "Team", "AssignedTo", "State", "RequesterName",
-        "CreatedDay", "SLA_Display", "Elapsed_BDays", "Remaining_BDays", "SLA_Status",
+        "CreatedDay", "SLA_Display", "SLA_Days", "Elapsed_BDays", "Remaining_BDays", "SLA_Status",
     ]].copy()
+
+    # ADO deep link on ID
+    display["ID"] = display["ID"].apply(
+        lambda x: f"https://{ADO_ORG}.visualstudio.com/{ADO_PROJECT}/_workitems/edit/{x}"
+    )
+
+    # Time pressure indicator
+    def time_pressure(row):
+        r = row["Remaining_BDays"]
+        status = row["SLA_Status"]
+        if "Paused" in status:
+            return "Paused"
+        if "Completed" in status:
+            return "Done" if "Late" not in status else "Late"
+        if r < 0:
+            return f"{abs(int(r))}d overdue"
+        if r == 0:
+            return "Due today"
+        if r <= 1:
+            return "Due tomorrow"
+        return f"{int(r)}d buffer"
+
+    display["Time Left"] = display.apply(time_pressure, axis=1)
+
+    # SLA progress %
+    def sla_progress(row):
+        if row["SLA_Days"] == 0:
+            return 100
+        pct = (row["Elapsed_BDays"] / row["SLA_Days"]) * 100
+        return min(int(pct), 100)
+
+    display["SLA Progress"] = display.apply(sla_progress, axis=1)
 
     display = display.rename(columns={
         "SubType": "Change Scenario",
@@ -1195,17 +1228,19 @@ for section in section_order:
         "CreatedDay": "Submitted",
         "RequesterName": "Requester",
         "SLA_Display": "SLA Target",
-        "Elapsed_BDays": "Elapsed",
-        "Remaining_BDays": "Remaining",
         "SLA_Status": "Status",
     })
 
+    display = display.drop(columns=["Elapsed_BDays", "Remaining_BDays", "SLA_Days"])
+
     status_order = {
-        "🔴 Breached": 0, "🟡 At Risk": 1, "🟢 On Track": 2,
-        "⏸️ Paused": 2.5,
-        "⚠️ Completed Late": 3, "✅ Completed": 4,
+        "Breached": 0, "At Risk": 1, "On Track": 2,
+        "Paused": 2.5,
+        "Completed Late": 3, "Completed": 4,
     }
-    display["_sort"] = display["Status"].map(status_order).fillna(5)
+    display["_sort"] = display["Status"].apply(
+        lambda s: next((v for k, v in status_order.items() if k in s), 5)
+    )
     display = display.sort_values(
         ["_sort", "Submitted"], ascending=[True, False]
     ).drop(columns="_sort")
@@ -1216,15 +1251,55 @@ for section in section_order:
         hide_index=True,
         height=min(len(display) * 38 + 50, 400),
         column_config={
-            "ID": st.column_config.NumberColumn("ID", format="%d"),
-            "Elapsed": st.column_config.NumberColumn(format="%d"),
-            "Remaining": st.column_config.NumberColumn(format="%d"),
+            "ID": st.column_config.LinkColumn("ID", display_text=r"(\d+)$", help="Click to open in ADO"),
+            "SLA Progress": st.column_config.ProgressColumn("SLA %", format="%d%%", min_value=0, max_value=100),
         },
     )
     st.markdown("")
 
 if len(section_order) == 0:
     st.info("No tickets match the current filters.")
+
+# ---------------------------------------------------------------------------
+# Excel Export
+# ---------------------------------------------------------------------------
+st.markdown("---")
+if not df.empty:
+    export_df = df[[
+        "ID", "SubType", "Team", "AssignedTo", "State", "RequesterName",
+        "CreatedDay", "SLA_Display", "SLA_Days", "Elapsed_BDays",
+        "Remaining_BDays", "SLA_Status",
+    ]].copy()
+    export_df = export_df.rename(columns={
+        "SubType": "Scenario", "AssignedTo": "Assignee",
+        "CreatedDay": "Submitted", "RequesterName": "Requester",
+        "SLA_Display": "SLA target", "SLA_Days": "SLA days",
+        "Elapsed_BDays": "Elapsed (bdays)", "Remaining_BDays": "Remaining (bdays)",
+        "SLA_Status": "Status",
+    })
+    export_df = export_df.sort_values("Submitted", ascending=False)
+
+    summary_text = (
+        f"Change Management SLA Snapshot \u2014 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+        f"Total: {total} | Open: {open_count} | Completed: {completed_count}\n"
+        f"At risk: {at_risk} | Breached: {breached} | SLA compliance: {sla_pct:.0f}%\n"
+    )
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        pd.DataFrame({"SLA Snapshot": [summary_text]}).to_excel(writer, sheet_name="Summary", index=False)
+        export_df.to_excel(writer, sheet_name="Tickets", index=False)
+        worksheet = writer.sheets["Tickets"]
+        for i, col in enumerate(export_df.columns):
+            max_len = max(export_df[col].astype(str).str.len().max(), len(col)) + 2
+            worksheet.set_column(i, i, min(max_len, 30))
+
+    st.download_button(
+        label="Export SLA snapshot (Excel)",
+        data=buffer.getvalue(),
+        file_name=f"SLA_Snapshot_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 # ---------------------------------------------------------------------------
 # SLA Notifications — post comment on at-risk tickets (once per ticket)

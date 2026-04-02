@@ -508,7 +508,7 @@ st.set_page_config(
     page_title="Change Management - SLA App",
     page_icon="📋",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -532,64 +532,115 @@ st.markdown("""
         --border-subtle: #f0f0f0;
     }
 
-    [data-testid="stSidebar"] { display: none; }
-
+    /* ── App shell ── */
     .stApp {
         background: var(--bg-primary);
         color: var(--text-primary);
         font-family: 'Inter', sans-serif;
     }
-
-    /* Override Streamlit's default backgrounds */
     [data-testid="stHeader"] { background: transparent; }
     header { background: transparent !important; }
 
-    .app-title {
+    /* ── Sidebar ── */
+    [data-testid="stSidebar"] {
+        background: var(--bg-card) !important;
+        border-right: 1px solid var(--border) !important;
+    }
+    [data-testid="stSidebar"] > div:first-child { padding-top: 1rem; }
+    [data-testid="stSidebarContent"] label {
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.82rem !important;
+        color: var(--text-secondary) !important;
+    }
+    [data-testid="stSidebar"] .stTextInput input {
         font-family: 'Inter', sans-serif;
+        font-size: 0.82rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--border);
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        font-size: 0.8rem;
+        border-radius: 0.5rem;
+    }
+    .sidebar-section-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.68rem;
         font-weight: 600;
-        font-size: 5rem;
-        color: var(--text-primary);
-        letter-spacing: -0.03em;
-        margin: 0;
-        padding: 0.25rem 0;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin: 0.5rem 0 0.25rem;
     }
 
-    /* Scenario section headers — clean light */
+    /* ── Compact app title ── */
+    .app-title {
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 1.5rem;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+        margin: 0;
+        padding: 0.3rem 0 0.1rem;
+        line-height: 1.2;
+    }
+
+    /* ── Compliance bar ── */
+    .compliance-bar-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0.4rem 0;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+    }
+    .compliance-bar-bg {
+        width: 160px;
+        height: 5px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .compliance-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #16a34a, #4ade80);
+        border-radius: 4px;
+    }
+
+    /* ── Scenario section headers ── */
     .scenario-header {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        padding: 1.1rem 1.5rem;
-        border-radius: 1rem;
+        padding: 0.9rem 1.1rem;
+        border-radius: 0.75rem;
         color: var(--text-primary);
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.4rem;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         transition: box-shadow 0.2s ease;
     }
-    .scenario-header:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
+    .scenario-header:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
     .scenario-header h3 {
         margin: 0;
-        font-size: 1.05rem;
+        font-size: 0.9rem;
         font-family: 'Inter', sans-serif;
         font-weight: 600;
         color: var(--text-primary);
         letter-spacing: -0.01em;
     }
     .scenario-header p {
-        margin: 0.3rem 0 0 0;
-        font-size: 0.78rem;
+        margin: 0.2rem 0 0 0;
+        font-size: 0.72rem;
         color: var(--text-secondary);
         font-family: 'Inter', sans-serif;
         font-weight: 400;
     }
 
-    /* KPI cards — modern gradient tiles */
+    /* ── KPI cards ── */
     .kpi-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        padding: 1.1rem 1.2rem;
-        border-radius: 1rem;
+        padding: 0.85rem 1rem;
+        border-radius: 0.75rem;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
         position: relative;
@@ -601,20 +652,13 @@ st.markdown("""
         top: 0; left: 0; right: 0;
         height: 3px;
         background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
-        border-radius: 1rem 1rem 0 0;
+        border-radius: 0.75rem 0.75rem 0 0;
     }
-    .kpi-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-    }
-    .kpi-card .kpi-icon {
-        font-size: 1.3rem;
-        margin-bottom: 0.4rem;
-        display: block;
-    }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    .kpi-card .kpi-icon { font-size: 1.1rem; margin-bottom: 0.2rem; display: block; }
     .kpi-card h2 {
         margin: 0;
-        font-size: 2rem;
+        font-size: 1.75rem;
         color: var(--text-primary);
         font-family: 'Inter', sans-serif;
         font-weight: 700;
@@ -622,8 +666,8 @@ st.markdown("""
         line-height: 1;
     }
     .kpi-card p {
-        margin: 0.3rem 0 0 0;
-        font-size: 0.7rem;
+        margin: 0.2rem 0 0 0;
+        font-size: 0.65rem;
         color: var(--text-secondary);
         font-family: 'Inter', sans-serif;
         font-weight: 500;
@@ -635,27 +679,24 @@ st.markdown("""
     .kpi-red::before    { background: linear-gradient(90deg, #dc2626, #f87171); }
     .kpi-blue::before   { background: linear-gradient(90deg, #2563eb, #60a5fa); }
 
-    /* Expander */
+    /* ── Expander ── */
     .streamlit-expanderHeader {
         font-family: 'Inter', sans-serif;
         color: var(--text-secondary);
-        font-size: 0.85rem;
+        font-size: 0.82rem;
     }
 
-    /* Dataframes */
+    /* ── Dataframes ── */
     [data-testid="stDataFrame"] {
         border-radius: 0.75rem;
         overflow: hidden;
         border: 1px solid var(--border);
     }
 
-    /* Captions */
-    .stCaption, small {
-        font-family: 'Inter', sans-serif;
-        color: var(--text-muted);
-    }
+    /* ── Captions ── */
+    .stCaption, small { font-family: 'Inter', sans-serif; color: var(--text-muted); }
 
-    /* Buttons — ghost style */
+    /* ── Buttons — ghost style ── */
     .stButton > button {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -663,6 +704,7 @@ st.markdown("""
         border-radius: 0.5rem;
         font-family: 'Inter', sans-serif;
         font-weight: 500;
+        font-size: 0.8rem;
         transition: all 0.15s ease;
     }
     .stButton > button:hover {
@@ -670,26 +712,14 @@ st.markdown("""
         box-shadow: 0 1px 4px rgba(0,0,0,0.06);
     }
 
-    /* Popover */
-    [data-testid="stPopover"] button {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        color: var(--text-primary);
-        border-radius: 0.5rem;
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* Markdown text */
+    /* ── Markdown ── */
     .stMarkdown, .stMarkdown p {
         color: var(--text-primary);
         font-family: 'Inter', sans-serif;
     }
 
-    /* Dividers */
-    hr {
-        border-color: var(--border) !important;
-        opacity: 0.5;
-    }
+    /* ── Dividers ── */
+    hr { border-color: var(--border) !important; opacity: 0.5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -783,7 +813,7 @@ def _parse_items(all_items, ref_time):
     df = df.dropna(subset=["CreatedDate"]).reset_index(drop=True)
 
     df["IsOpen"] = ~df["State"].isin(["Completed", "Cancelled"])
-    df["CreatedDay"] = df["CreatedDate"].dt.tz_convert("US/Pacific").dt.normalize().dt.date
+    df["CreatedDay"] = df["CreatedDate"].dt.tz_convert("America/Los_Angeles").dt.normalize().dt.date
 
     # SLA – compute deadline
     # Monday-deadline scenarios: deadline = next Monday after creation
@@ -930,72 +960,84 @@ if not ADO_ORG or not ADO_PROJECT or not ADO_PAT:
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Title + Filter Bar
+# Fetch data (needed before sidebar for dynamic filter options)
 # ---------------------------------------------------------------------------
-title_col, spacer_col, filter_col, refresh_col = st.columns([4, 3, 2, 1])
-with title_col:
-    st.markdown('<p class="app-title">Change Management SLA App</p>', unsafe_allow_html=True)
-with filter_col:
-    filter_open = st.popover("☰ Filters", use_container_width=True)
-with refresh_col:
-    if st.button("🔄", help="Refresh data from ADO"):
-        st.cache_data.clear()
-        st.rerun()
-
-# Fetch data
 df_all = fetch_work_items(days_back=365)
 
 if df_all.empty:
     st.error("No work items found. Check your ADO connection.")
     st.stop()
 
-# --- Filter menu ---
-with filter_open:
+# ---------------------------------------------------------------------------
+# Sidebar — persistent filters
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown('<p style="font-family:\'Inter\',sans-serif;font-weight:700;font-size:1rem;color:#1a1a1a;margin-bottom:0.6rem;">📋 CM SLA Filters</p>', unsafe_allow_html=True)
+
+    search_query = st.text_input(
+        "Search",
+        placeholder="🔍  Ticket ID, title, assignee…",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
     # 1) View Mode
     view_mode = st.radio(
         "View Mode",
         ["📸 Live View", "📅 Date Range"],
         index=0,
-        help="**Live View** shows current ticket states. **Date Range** filters by submission date.",
+        help="**Live View** shows current open tickets. **Date Range** filters by submission date.",
     )
-
     if view_mode.startswith("📅"):
         dr = st.date_input(
-            "Select Date Range",
+            "Date Range",
             value=(date(2026, 1, 1), date.today()),
+            label_visibility="collapsed",
         )
     else:
         dr = None
 
-    st.markdown("---")
+    st.divider()
 
-    # 2) Team — checkboxes
-    st.markdown("**Team**")
+    # 2) Team
+    st.markdown('<p class="sidebar-section-title">Team</p>', unsafe_allow_html=True)
     team_options = ["Performance Solutions", "Acquisition & Growth", "SMB", "MATS", "Windows Store", "Agency Development"]
     team_checks = {}
     for t in team_options:
         team_checks[t] = st.checkbox(t, value=True, key=f"team_{t}")
     team_filter = [t for t, checked in team_checks.items() if checked]
 
-    st.markdown("---")
+    st.divider()
 
-    # 3) Scenario — checkboxes (dynamic from data)
-    st.markdown("**Scenario**")
+    # 3) Scenario — dynamic from data
+    st.markdown('<p class="sidebar-section-title">Scenario</p>', unsafe_allow_html=True)
     available_scenarios = sorted(df_all["Scenario"].dropna().unique())
     scenario_checks = {}
     for s in available_scenarios:
         scenario_checks[s] = st.checkbox(s, value=True, key=f"scenario_{s}")
     scenario_filter = [s for s, checked in scenario_checks.items() if checked]
 
-    st.markdown("---")
+    st.divider()
 
-    # 4) Assignee — checkboxes (dynamic from data)
-    st.markdown("**Assignee**")
+    # 4) Assignee — dynamic from data
+    st.markdown('<p class="sidebar-section-title">Assignee</p>', unsafe_allow_html=True)
     all_assignees = sorted(df_all["AssignedTo"].dropna().unique())
     assignee_checks = {}
     for a in all_assignees:
         assignee_checks[a] = st.checkbox(a, value=True, key=f"assignee_{a}")
     assignee_filter = [a for a, checked in assignee_checks.items() if checked]
+
+    st.divider()
+
+    if st.button("↻  Refresh", use_container_width=True, help="Reload data from Azure DevOps"):
+        st.cache_data.clear()
+        st.rerun()
+
+# ---------------------------------------------------------------------------
+# Compact header
+# ---------------------------------------------------------------------------
+st.markdown('<p class="app-title">Change Management SLA App</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Apply Filters
@@ -1006,6 +1048,18 @@ df = df[df["Scenario"].isin(scenario_filter)]
 
 # Assignee: filter only when user has deselected someone
 df = df[df["AssignedTo"].isin(assignee_filter)]
+
+# Search query (sidebar)
+if search_query:
+    sq = search_query.strip()
+    mask = (
+        df["ID"].astype(str).str.contains(sq, case=False, na=False)
+        | df["Title"].str.contains(sq, case=False, na=False)
+        | df["AssignedTo"].str.contains(sq, case=False, na=False)
+        | df["Scenario"].str.contains(sq, case=False, na=False)
+        | df["Team"].str.contains(sq, case=False, na=False)
+    )
+    df = df[mask]
 
 # View mode: Live = open only; Date Range = all tickets in range
 if dr is not None:
@@ -1110,9 +1164,16 @@ with k7:
     if st.button("View", key="btn_waiting", use_container_width=True):
         show_waiting()
 
-st.caption(
-    f"SLA Compliance: **{sla_pct:.0f}%** of completed tickets met SLA  |  "
-    f"Live - updated just now - auto-refreshes every {AUTO_REFRESH_SECONDS // 60} min"
+st.markdown(
+    f'<div class="compliance-bar-wrap">'
+    f'SLA Compliance: &nbsp;<strong>{sla_pct:.0f}%</strong>&nbsp; of completed tickets met SLA'
+    f'<div class="compliance-bar-bg">'
+    f'<div class="compliance-bar-fill" style="width:{min(sla_pct, 100):.0f}%"></div>'
+    f'</div>'
+    f'<span style="color:var(--text-muted);font-size:0.72rem;">'
+    f'Live · auto-refreshes every {AUTO_REFRESH_SECONDS // 60} min</span>'
+    f'</div>',
+    unsafe_allow_html=True,
 )
 st.markdown("---")
 
@@ -1208,13 +1269,36 @@ AG_SLA_INFO = {
     ),
 }
 
-for section in section_order:
-    sdf = df[df["DisplaySection"] == section].copy()
+# ---------------------------------------------------------------------------
+# Helpers for section rendering
+# ---------------------------------------------------------------------------
+def _time_pressure(row):
+    r = row["Remaining_BDays"]
+    status = row["SLA_Status"]
+    if "Paused" in status:
+        return "Paused"
+    if "Completed" in status:
+        return "Done" if "Late" not in status else "Late"
+    if r < 0:
+        return f"{abs(int(r))}d overdue"
+    if r == 0:
+        return "Due today"
+    if r <= 1:
+        return "Due tomorrow"
+    return f"{int(r)}d buffer"
 
+
+def _sla_progress(row):
+    if row["SLA_Days"] == 0:
+        return 100
+    return min(int((row["Elapsed_BDays"] / row["SLA_Days"]) * 100), 100)
+
+
+def _render_section(section, df_filtered):
+    sdf = df_filtered[df_filtered["DisplaySection"] == section].copy()
     open_in = int(sdf["IsOpen"].sum()) if not sdf.empty else 0
     total_in = len(sdf)
 
-    # Pick SLA info for the section header
     if section == "Small-to-Medium Business (SMB)":
         sla_info = SMB_SLA_INFO
     elif section == "Acquisition & Growth":
@@ -1235,8 +1319,7 @@ for section in section_order:
     st.markdown(
         f'<div class="scenario-header">'
         f'<h3>{status_emoji} {section}</h3>'
-        f'<p>SLA: {sla_desc}  •  '
-        f'{open_in} open / {total_in} total</p>'
+        f'<p>SLA: {sla_desc}  •  {open_in} open / {total_in} total</p>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -1246,46 +1329,18 @@ for section in section_order:
 
     if sdf.empty:
         st.caption("No current tickets in this section.")
-        st.markdown("")
-        continue
+        return
 
-    # Display table
     display = sdf[[
         "ID", "SubType", "Team", "AssignedTo", "State", "RequesterName",
         "CreatedDay", "SLA_Display", "SLA_Days", "Elapsed_BDays", "Remaining_BDays", "SLA_Status",
     ]].copy()
 
-    # ADO deep link on ID
     display["ID"] = display["ID"].apply(
         lambda x: f"https://{ADO_ORG}.visualstudio.com/{ADO_PROJECT}/_workitems/edit/{x}"
     )
-
-    # Time pressure indicator
-    def time_pressure(row):
-        r = row["Remaining_BDays"]
-        status = row["SLA_Status"]
-        if "Paused" in status:
-            return "Paused"
-        if "Completed" in status:
-            return "Done" if "Late" not in status else "Late"
-        if r < 0:
-            return f"{abs(int(r))}d overdue"
-        if r == 0:
-            return "Due today"
-        if r <= 1:
-            return "Due tomorrow"
-        return f"{int(r)}d buffer"
-
-    display["Time Left"] = display.apply(time_pressure, axis=1)
-
-    # SLA progress %
-    def sla_progress(row):
-        if row["SLA_Days"] == 0:
-            return 100
-        pct = (row["Elapsed_BDays"] / row["SLA_Days"]) * 100
-        return min(int(pct), 100)
-
-    display["SLA Progress"] = display.apply(sla_progress, axis=1)
+    display["Time Left"] = display.apply(_time_pressure, axis=1)
+    display["SLA Progress"] = display.apply(_sla_progress, axis=1)
 
     display = display.rename(columns={
         "SubType": "Change Scenario",
@@ -1295,35 +1350,46 @@ for section in section_order:
         "SLA_Display": "SLA Target",
         "SLA_Status": "Status",
     })
-
     display = display.drop(columns=["Elapsed_BDays", "Remaining_BDays", "SLA_Days"])
 
-    status_order = {
+    _status_order = {
         "Breached": 0, "At Risk": 1, "On Track": 2,
-        "Paused": 2.5,
-        "Completed Late": 3, "Completed": 4,
+        "Paused": 2.5, "Completed Late": 3, "Completed": 4,
     }
     display["_sort"] = display["Status"].apply(
-        lambda s: next((v for k, v in status_order.items() if k in s), 5)
+        lambda s: next((v for k, v in _status_order.items() if k in s), 5)
     )
-    display = display.sort_values(
-        ["_sort", "Submitted"], ascending=[True, False]
-    ).drop(columns="_sort")
+    display = display.sort_values(["_sort", "Submitted"], ascending=[True, False]).drop(columns="_sort")
 
     st.dataframe(
         display,
         use_container_width=True,
         hide_index=True,
-        height=min(len(display) * 38 + 50, 400),
+        height=min(len(display) * 38 + 50, 380),
         column_config={
             "ID": st.column_config.LinkColumn("ID", display_text=r"(\d+)$", help="Click to open in ADO"),
             "SLA Progress": st.column_config.ProgressColumn("SLA %", format="%d%%", min_value=0, max_value=100),
         },
     )
-    st.markdown("")
 
-if len(section_order) == 0:
+
+# ---------------------------------------------------------------------------
+# Render scenario sections in a 2-column grid
+# ---------------------------------------------------------------------------
+if not section_order:
     st.info("No tickets match the current filters.")
+else:
+    for i in range(0, len(section_order), 2):
+        pair = section_order[i : i + 2]
+        if len(pair) == 1:
+            _render_section(pair[0], df)
+        else:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                _render_section(pair[0], df)
+            with col_b:
+                _render_section(pair[1], df)
+        st.markdown("")
 
 # ---------------------------------------------------------------------------
 # Excel Export

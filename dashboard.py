@@ -783,7 +783,7 @@ def _parse_items(all_items, ref_time):
     df = df.dropna(subset=["CreatedDate"]).reset_index(drop=True)
 
     df["IsOpen"] = ~df["State"].isin(["Completed", "Cancelled"])
-    df["CreatedDay"] = df["CreatedDate"].dt.tz_convert("US/Pacific").dt.normalize().dt.date
+    df["CreatedDay"] = df["CreatedDate"].dt.tz_convert("America/Los_Angeles").dt.normalize().dt.date
 
     # SLA – compute deadline
     # Monday-deadline scenarios: deadline = next Monday after creation

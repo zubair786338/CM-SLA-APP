@@ -1068,6 +1068,17 @@ if not ADO_ORG or not ADO_PROJECT or not ADO_PAT:
 # ---------------------------------------------------------------------------
 df_all = fetch_work_items(days_back=365)
 
+# DEBUG — remove after confirming cloud works
+with st.expander("🔍 Debug Info (remove later)", expanded=False):
+    st.write(f"**ADO_ORG:** `{ADO_ORG}`")
+    st.write(f"**ADO_PROJECT:** `{ADO_PROJECT}`")
+    st.write(f"**PAT set:** `{bool(ADO_PAT)}` (length: {len(ADO_PAT) if ADO_PAT else 0})")
+    st.write(f"**df_all shape:** `{df_all.shape if not df_all.empty else 'EMPTY'}`")
+    if not df_all.empty:
+        st.write(f"**States:** `{df_all['State'].value_counts().to_dict()}`")
+        st.write(f"**Teams:** `{df_all['Team'].value_counts().to_dict()}`")
+        st.write(f"**IsOpen count:** `{df_all['IsOpen'].sum()}`")
+
 if df_all.empty:
     st.error("No work items found. Check your ADO connection.")
     st.stop()

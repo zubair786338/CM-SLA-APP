@@ -1069,6 +1069,11 @@ if not ADO_ORG or not ADO_PROJECT or not ADO_PAT:
 # ---------------------------------------------------------------------------
 # Fetch data (needed before sidebar for dynamic filter options)
 # ---------------------------------------------------------------------------
+# Force clear stale cache on first load of this deploy
+if "_cache_cleared_v2" not in st.session_state:
+    st.cache_data.clear()
+    st.session_state["_cache_cleared_v2"] = True
+
 df_all = fetch_work_items(days_back=365)
 
 # DEBUG — remove after confirming cloud works

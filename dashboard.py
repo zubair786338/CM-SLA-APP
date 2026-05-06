@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import json
+from concurrent.futures import ThreadPoolExecutor
 import io
 
 # ---------------------------------------------------------------------------
@@ -22,6 +23,11 @@ ADO_PAT = os.getenv("ADO_PAT", "") or st.secrets.get("ADO_PAT", "")
 BASE_URL = f"https://{ADO_ORG}.visualstudio.com"
 AUTH = ("", ADO_PAT)
 AUTO_REFRESH_SECONDS = 300
+
+# Manual SLA overrides — ticket IDs forced to "Completed" (e.g. forgot to pause)
+SLA_OVERRIDES = {
+    52233,  # Forgot to set Waiting for Info
+}
 
 # ---------------------------------------------------------------------------
 # Robust HTTP session with retries
@@ -766,6 +772,80 @@ def _fetch_details(ids_list, as_of_iso=None):
     return all_items
 
 
+# ---------------------------------------------------------------------------
+# Paused-time accounting — fetch state-change history from ADO Updates API
+# ---------------------------------------------------------------------------
+_PAUSED_STATES = {"waiting for info", "pending lockdown", "waiting validation"}
+_REACTIVATION_STATES = {"cancelled", "completed"}  # SLA resets when leaving these states
+
+
+@st.cache_data(ttl=AUTO_REFRESH_SECONDS, show_spinner=False)
+def _fetch_history_map(_ids_tuple):
+    """Return {item_id: {"paused_days": int, "reactivation_date": Timestamp|None}}."""
+
+    def _get_history(item_id):
+        try:
+            resp = HTTP.get(
+                f"{BASE_URL}/{ADO_PROJECT}/_apis/wit/workitems/{item_id}/updates"
+                f"?api-version=7.1",
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                return (item_id, {"paused_days": 0, "reactivation_date": None})
+            updates = resp.json().get("value", [])
+            paused_total = 0
+            pause_start = None
+            last_reactivation = None
+            for u in updates:
+                state_field = u.get("fields", {}).get("System.State", {})
+                if not state_field:
+                    continue
+                new_val = (state_field.get("newValue") or "").lower()
+                old_val = (state_field.get("oldValue") or "").lower()
+                changed = (
+                    u.get("fields", {})
+                    .get("System.ChangedDate", {})
+                    .get("newValue")
+                )
+                if not changed:
+                    continue
+                ts = pd.Timestamp(changed)
+                if ts.tzinfo is None:
+                    ts = ts.tz_localize("UTC")
+                else:
+                    ts = ts.tz_convert("UTC")
+                # Entering a paused state
+                if new_val in _PAUSED_STATES and old_val not in _PAUSED_STATES:
+                    pause_start = ts
+                # Leaving a paused state
+                elif old_val in _PAUSED_STATES and new_val not in _PAUSED_STATES:
+                    if pause_start is not None:
+                        paused_total += business_days_between(pause_start, ts)
+                        pause_start = None
+                # Reactivation: leaving Cancelled/Completed for an active state
+                if old_val in _REACTIVATION_STATES and new_val not in _REACTIVATION_STATES:
+                    last_reactivation = ts
+                    # Reset paused counters — only count pauses after reactivation
+                    paused_total = 0
+                    pause_start = None
+            # If still paused, count up to now
+            if pause_start is not None:
+                paused_total += business_days_between(
+                    pause_start, pd.Timestamp.now(tz=timezone.utc)
+                )
+            return (item_id, {"paused_days": paused_total, "reactivation_date": last_reactivation})
+        except Exception:
+            return (item_id, {"paused_days": 0, "reactivation_date": None})
+
+    result = {}
+    with ThreadPoolExecutor(max_workers=30) as pool:
+        for item_id, info in pool.map(
+            _get_history, _ids_tuple
+        ):
+            result[item_id] = info
+    return result
+
+
 def _parse_items(all_items, ref_time):
     rows = []
     for item in all_items:
@@ -815,9 +895,21 @@ def _parse_items(all_items, ref_time):
     df["IsOpen"] = ~df["State"].isin(["Completed", "Cancelled"])
     df["CreatedDay"] = df["CreatedDate"].dt.tz_convert("America/Los_Angeles").dt.normalize().dt.date
 
-    # SLA – compute deadline
-    # Monday-deadline scenarios: deadline = next Monday after creation
-    # All others: deadline = CreatedDate + N business days
+    # For "Waiting for Info" and "Pending Lockdown" tickets, pause the SLA clock.
+    df["IsPaused"] = df["State"].str.lower().str.contains("waiting for info|pending lockdown|waiting validation", na=False, regex=True)
+
+    # ── Fetch history (paused time + reactivation dates) from ADO Updates API ──
+    history_map = _fetch_history_map(tuple(df["ID"].tolist()))
+    df["Paused_BDays"] = df["ID"].map(lambda i: history_map.get(i, {}).get("paused_days", 0)).astype(int)
+    df["ReactivationDate"] = df["ID"].map(lambda i: history_map.get(i, {}).get("reactivation_date"))
+    df["ReactivationDate"] = pd.to_datetime(df["ReactivationDate"], utc=True, errors="coerce")
+
+    # For reactivated tickets, use the reactivation date as the effective start
+    df["EffectiveStart"] = df.apply(
+        lambda r: r["ReactivationDate"] if pd.notna(r["ReactivationDate"]) else r["CreatedDate"], axis=1
+    )
+
+    # Recompute SLA days and deadline from effective start
     df["SLA_Days"] = df.apply(lambda r: get_sla_days(r["Scenario"], r["Team"]), axis=1)
     df["IsMondayDeadline"] = (
         df["Scenario"].isin(MONDAY_DEADLINE_SCENARIOS)
@@ -826,23 +918,28 @@ def _parse_items(all_items, ref_time):
 
     def compute_deadline(row):
         if row["IsMondayDeadline"]:
-            return next_monday(row["CreatedDate"])
-        return add_business_days(row["CreatedDate"], row["SLA_Days"])
+            return next_monday(row["EffectiveStart"])
+        return add_business_days(row["EffectiveStart"], row["SLA_Days"])
 
     df["SLA_Deadline"] = df.apply(compute_deadline, axis=1)
     df["SLA_Deadline"] = pd.to_datetime(df["SLA_Deadline"], utc=True)
 
-    # For "Waiting for Info" and "Pending Lockdown" tickets, pause the SLA clock.
-    df["IsPaused"] = df["State"].str.lower().str.contains("waiting for info|pending lockdown", na=False, regex=True)
+    # Adjust SLA deadline & SLA days by adding paused business days
+    def adjust_deadline(row):
+        if row["Paused_BDays"] > 0:
+            return add_business_days(row["SLA_Deadline"], row["Paused_BDays"])
+        return row["SLA_Deadline"]
+
+    df["SLA_Deadline"] = df.apply(adjust_deadline, axis=1)
+    df["SLA_Deadline"] = pd.to_datetime(df["SLA_Deadline"], utc=True)
+    df["SLA_Days"] = df["SLA_Days"] + df["Paused_BDays"]
 
     def calc_elapsed(row):
-        start = row["CreatedDate"]
+        start = row["EffectiveStart"]
         if not row["IsOpen"]:
             end = row["EndDate"] if pd.notna(row["EndDate"]) else (
                 row["ClosedDate"] if pd.notna(row["ClosedDate"]) else ref_time
             )
-        elif row["IsPaused"]:
-            end = row["StateChangeDate"] if pd.notna(row["StateChangeDate"]) else ref_time
         else:
             end = ref_time
         return business_days_between(start, end)
@@ -854,14 +951,10 @@ def _parse_items(all_items, ref_time):
     def calc_remaining(row):
         if row["IsMondayDeadline"]:
             if not row["IsOpen"]:
-                # Already resolved — check if it was before the deadline
                 end = row["EndDate"] if pd.notna(row["EndDate"]) else (
                     row["ClosedDate"] if pd.notna(row["ClosedDate"]) else ref_time
                 )
                 return business_days_between(end, row["SLA_Deadline"]) if end <= row["SLA_Deadline"] else -business_days_between(row["SLA_Deadline"], end)
-            elif row["IsPaused"]:
-                pause_point = row["StateChangeDate"] if pd.notna(row["StateChangeDate"]) else ref_time
-                return business_days_between(pause_point, row["SLA_Deadline"])
             else:
                 return business_days_between(ref_time, row["SLA_Deadline"])
         else:
@@ -872,7 +965,6 @@ def _parse_items(all_items, ref_time):
     def sla_status(row):
         if not row["IsOpen"]:
             if row["IsMondayDeadline"]:
-                # Check if resolved before the Monday deadline
                 end = row["EndDate"] if pd.notna(row["EndDate"]) else (
                     row["ClosedDate"] if pd.notna(row["ClosedDate"]) else ref_time
                 )
@@ -889,6 +981,18 @@ def _parse_items(all_items, ref_time):
             return "🔴 Breached"
 
     df["SLA_Status"] = df.apply(sla_status, axis=1)
+
+    # Apply manual overrides
+    df.loc[
+        (df["ID"].isin(SLA_OVERRIDES)) & (~df["IsOpen"]),
+        "SLA_Status",
+    ] = "✅ Completed"
+
+    # Cancelled tickets are always marked as Completed
+    df.loc[
+        df["State"] == "Cancelled",
+        "SLA_Status",
+    ] = "✅ Completed"
 
     # Show deadline date as SLA target (same format as Submitted column)
     df["SLA_Display"] = df["SLA_Deadline"].apply(
@@ -1081,7 +1185,7 @@ open_count = int(df["IsOpen"].sum())
 completed_count = total - open_count
 on_track = int(df["SLA_Status"].str.contains("On Track").sum())
 at_risk = int(df["SLA_Status"].str.contains("At Risk").sum())
-breached = int(df["SLA_Status"].str.contains("Breached").sum())
+breached = int(df["SLA_Status"].str.contains("Breached|Completed Late").sum())
 waiting_info = int(df["SLA_Status"].str.contains("Paused").sum())
 sla_met = int(((~df["IsOpen"]) & (df["Elapsed_BDays"] <= df["SLA_Days"])).sum())
 sla_pct = (sla_met / completed_count * 100) if completed_count > 0 else 100.0
@@ -1126,7 +1230,7 @@ def show_at_risk():
 
 @st.dialog("Breached", width="large")
 def show_breached():
-    _tile_table(df[df["SLA_Status"].str.contains("Breached")])
+    _tile_table(df[df["SLA_Status"].str.contains("Breached|Completed Late")])
 
 @st.dialog("Waiting for Info", width="large")
 def show_waiting():
@@ -1312,7 +1416,7 @@ def _render_section(section, df_filtered):
     if sdf.empty:
         status_emoji = "🟢"
     else:
-        has_breached = sdf["SLA_Status"].str.contains("Breached").any()
+        has_breached = sdf["SLA_Status"].str.contains("Breached|Completed Late").any()
         has_at_risk = sdf["SLA_Status"].str.contains("At Risk").any()
         status_emoji = "🔴" if has_breached else ("🟡" if has_at_risk else "🟢")
 

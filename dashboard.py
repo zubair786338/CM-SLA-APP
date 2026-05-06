@@ -1030,9 +1030,12 @@ def fetch_work_items(days_back=365):
             st.stop()
         resp.raise_for_status()
         refs = resp.json().get("workItems", [])
+        # DEBUG — remove after fixing cloud issue
+        st.session_state["_debug_wiql_count"] = len(refs)
         if not refs:
             return pd.DataFrame()
         items = _fetch_details([w["id"] for w in refs])
+        st.session_state["_debug_detail_count"] = len(items)
         return _parse_items(items, pd.Timestamp.now(tz=timezone.utc))
     except requests.exceptions.ConnectionError:
         st.error(
@@ -1072,7 +1075,10 @@ df_all = fetch_work_items(days_back=365)
 with st.expander("🔍 Debug Info (remove later)", expanded=False):
     st.write(f"**ADO_ORG:** `{ADO_ORG}`")
     st.write(f"**ADO_PROJECT:** `{ADO_PROJECT}`")
-    st.write(f"**PAT set:** `{bool(ADO_PAT)}` (length: {len(ADO_PAT) if ADO_PAT else 0})")
+    pat_preview = f"{ADO_PAT[:4]}...{ADO_PAT[-4:]}" if ADO_PAT and len(ADO_PAT) > 8 else "???"
+    st.write(f"**PAT set:** `{bool(ADO_PAT)}` (length: {len(ADO_PAT) if ADO_PAT else 0}, preview: `{pat_preview}`)")
+    st.write(f"**WIQL returned:** `{st.session_state.get('_debug_wiql_count', '?')}` work item refs")
+    st.write(f"**Detail fetch returned:** `{st.session_state.get('_debug_detail_count', '?')}` items")
     st.write(f"**df_all shape:** `{df_all.shape if not df_all.empty else 'EMPTY'}`")
     if not df_all.empty:
         st.write(f"**States:** `{df_all['State'].value_counts().to_dict()}`")

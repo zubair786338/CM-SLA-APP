@@ -888,9 +888,15 @@ def _parse_items(all_items, ref_time):
     if df.empty:
         return df
 
+    # DEBUG
+    st.session_state["_debug_parse_raw_rows"] = len(df)
+
     for col in ["CreatedDate", "ClosedDate", "EndDate", "StartDate", "StateChangeDate"]:
         df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
     df = df.dropna(subset=["CreatedDate"]).reset_index(drop=True)
+
+    # DEBUG
+    st.session_state["_debug_parse_after_dropna"] = len(df)
 
     df["IsOpen"] = ~df["State"].isin(["Completed", "Cancelled"])
     df["CreatedDay"] = df["CreatedDate"].dt.tz_convert("America/Los_Angeles").dt.normalize().dt.date
@@ -900,6 +906,9 @@ def _parse_items(all_items, ref_time):
 
     # ── Fetch history (paused time + reactivation dates) from ADO Updates API ──
     history_map = _fetch_history_map(tuple(df["ID"].tolist()))
+
+    # DEBUG
+    st.session_state["_debug_history_map_size"] = len(history_map)
     df["Paused_BDays"] = df["ID"].map(lambda i: history_map.get(i, {}).get("paused_days", 0)).astype(int)
     df["ReactivationDate"] = df["ID"].map(lambda i: history_map.get(i, {}).get("reactivation_date"))
     df["ReactivationDate"] = pd.to_datetime(df["ReactivationDate"], utc=True, errors="coerce")
@@ -1070,9 +1079,9 @@ if not ADO_ORG or not ADO_PROJECT or not ADO_PAT:
 # Fetch data (needed before sidebar for dynamic filter options)
 # ---------------------------------------------------------------------------
 # Force clear stale cache on first load of this deploy
-if "_cache_cleared_v2" not in st.session_state:
+if "_cache_cleared_v3" not in st.session_state:
     st.cache_data.clear()
-    st.session_state["_cache_cleared_v2"] = True
+    st.session_state["_cache_cleared_v3"] = True
 
 df_all = fetch_work_items(days_back=365)
 
@@ -1084,6 +1093,9 @@ with st.expander("🔍 Debug Info (remove later)", expanded=False):
     st.write(f"**PAT set:** `{bool(ADO_PAT)}` (length: {len(ADO_PAT) if ADO_PAT else 0}, preview: `{pat_preview}`)")
     st.write(f"**WIQL returned:** `{st.session_state.get('_debug_wiql_count', '?')}` work item refs")
     st.write(f"**Detail fetch returned:** `{st.session_state.get('_debug_detail_count', '?')}` items")
+    st.write(f"**_parse_items raw rows:** `{st.session_state.get('_debug_parse_raw_rows', '?')}`")
+    st.write(f"**After dropna(CreatedDate):** `{st.session_state.get('_debug_parse_after_dropna', '?')}`")
+    st.write(f"**History map size:** `{st.session_state.get('_debug_history_map_size', '?')}`")
     st.write(f"**df_all shape:** `{df_all.shape if not df_all.empty else 'EMPTY'}`")
     if not df_all.empty:
         st.write(f"**States:** `{df_all['State'].value_counts().to_dict()}`")

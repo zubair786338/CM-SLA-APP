@@ -890,9 +890,16 @@ def _parse_items(all_items, ref_time):
 
     # DEBUG
     st.session_state["_debug_parse_raw_rows"] = len(df)
+    # Sample raw CreatedDate values before conversion
+    st.session_state["_debug_created_sample"] = df["CreatedDate"].head(10).tolist()
 
     for col in ["CreatedDate", "ClosedDate", "EndDate", "StartDate", "StateChangeDate"]:
         df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+
+    # After conversion
+    st.session_state["_debug_created_after"] = df["CreatedDate"].head(10).tolist()
+    st.session_state["_debug_created_notna"] = int(df["CreatedDate"].notna().sum())
+
     df = df.dropna(subset=["CreatedDate"]).reset_index(drop=True)
 
     # DEBUG
@@ -1079,9 +1086,9 @@ if not ADO_ORG or not ADO_PROJECT or not ADO_PAT:
 # Fetch data (needed before sidebar for dynamic filter options)
 # ---------------------------------------------------------------------------
 # Force clear stale cache on first load of this deploy
-if "_cache_cleared_v3" not in st.session_state:
+if "_cache_cleared_v4" not in st.session_state:
     st.cache_data.clear()
-    st.session_state["_cache_cleared_v3"] = True
+    st.session_state["_cache_cleared_v4"] = True
 
 df_all = fetch_work_items(days_back=365)
 
@@ -1094,6 +1101,9 @@ with st.expander("🔍 Debug Info (remove later)", expanded=False):
     st.write(f"**WIQL returned:** `{st.session_state.get('_debug_wiql_count', '?')}` work item refs")
     st.write(f"**Detail fetch returned:** `{st.session_state.get('_debug_detail_count', '?')}` items")
     st.write(f"**_parse_items raw rows:** `{st.session_state.get('_debug_parse_raw_rows', '?')}`")
+    st.write(f"**Raw CreatedDate sample:** `{st.session_state.get('_debug_created_sample', '?')}`")
+    st.write(f"**After to_datetime sample:** `{st.session_state.get('_debug_created_after', '?')}`")
+    st.write(f"**CreatedDate not-null count:** `{st.session_state.get('_debug_created_notna', '?')}`")
     st.write(f"**After dropna(CreatedDate):** `{st.session_state.get('_debug_parse_after_dropna', '?')}`")
     st.write(f"**History map size:** `{st.session_state.get('_debug_history_map_size', '?')}`")
     st.write(f"**df_all shape:** `{df_all.shape if not df_all.empty else 'EMPTY'}`")
